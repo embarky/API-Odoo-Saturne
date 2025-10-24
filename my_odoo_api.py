@@ -291,7 +291,7 @@ async def create_invoice(order_name: str):
 ###  / s a l e o r d e r s / d e l i v e r i e s / q u e r r y /{ o r d e r _ i d }
 ###
 @app.get("/saleorders/delivery_date/querry/{order_id}", tags=["Sale Orders"])
-async def handle_delivery_date(order_id: int):
+async def querry_delivery_date(order_id: int):
     models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
     """
     Get the scheduled delivery date of the current order
@@ -323,7 +323,7 @@ async def handle_delivery_date(order_id: int):
 ###  / s a l e o r d e r s / d e l i v e r i e s / c o n f i r m ( r e j e c t )
 ###
 @app.patch("/saleorders/delivery_date/confirm/{order_id,decision,new_date}", tags=["Sale Orders"])
-async def decide_delivery(order_id: int, decision: str, new_date: datetime):
+async def decide_delivery_date(order_id: int, decision: str, new_date: datetime):
     """
     Confirm, reject, or propose a new delivery date for an order.
     action: "accept", "reject"
@@ -369,7 +369,7 @@ async def decide_delivery(order_id: int, decision: str, new_date: datetime):
 ###  / a c c o u n t i n g / i n v o i c e / b y _ s a l e o r d e r /{ o r d e r _ n a m e }
 ###
 @app.get("/accounting/invoice/by_saleorder/{order_name}", tags=["Accounting"])
-async def get_pdf_invoice(order_name: str):
+async def querry_invoice_by_ordername(order_name: str):
     """
     Check all invoices of a sales order by its order name (e.g. 'S00001').
     """
