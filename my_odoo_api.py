@@ -297,7 +297,9 @@ import pytz
 @app.get("/saleorders/delivery_date/querry/{order_id}", tags=["Sale Orders"])
 async def handle_delivery_date(order_id: int):
     models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
-    """获取当前订单的预定交货日期"""
+    """
+    Get the scheduled delivery date of the current order
+    """
     order = models.execute_kw(
         DB, UID, PW,
         'sale.order', 'read',
