@@ -6,6 +6,7 @@ import xmlrpc.client
 import ssl
 from datetime import datetime
 import requests
+import pytz
 
 context = ssl._create_unverified_context() # to avoid SSL certificate verification(if needed)
 URL = "https://edu-heclausanne-saturne.odoo.com"
@@ -193,10 +194,6 @@ def cancel_quotations(order_name: str):
     """
     Cancel a quote by its order name (e.g. 'S00001').
     Invisible: state not in ['draft' 'sent''sale'] or not id or locked
-    - [Idraft] - Quotation
-    - [sent]- Quotation Sent
-    - [sale] - Sales Order
-    - [cancel] - Cancelled
     """
     models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
     try:
@@ -293,7 +290,6 @@ async def create_invoice(order_name: str):
 ###
 ###  / s a l e o r d e r s / d e l i v e r i e s / q u e r r y /{ o r d e r _ i d }
 ###
-import pytz
 @app.get("/saleorders/delivery_date/querry/{order_id}", tags=["Sale Orders"])
 async def handle_delivery_date(order_id: int):
     models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
@@ -439,7 +435,7 @@ async def get_pdf_invoice(invoice_id: int):
         res = session.post(login_url, json=payload)
         if res.status_code != 200 or "result" not in res.json():
             return Response(
-                content=f"登录 Odoo 失败: {res.status_code}\n{res.text}",
+                content=f"Failed to log in to Odoo: {res.status_code}\n{res.text}",
                 media_type="text/plain",
                 status_code=500
             )
@@ -451,7 +447,7 @@ async def get_pdf_invoice(invoice_id: int):
         pdf_res = session.get(pdf_url)
         if pdf_res.status_code != 200:
             return Response(
-                content=f"Odoo 返回错误: {pdf_res.status_code}\n{pdf_res.text}",
+                content=f"Odoo returns an error: {pdf_res.status_code}\n{pdf_res.text}",
                 media_type="text/plain",
                 status_code=pdf_res.status_code
             )
@@ -492,7 +488,7 @@ async def purchaseorders_get_pdf(purchase_orders_id: int):
         res = session.post(login_url, json=payload)
         if res.status_code != 200 or "result" not in res.json():
             return Response(
-                content=f"登录 Odoo 失败: {res.status_code}\n{res.text}",
+                content=f"Failed to log in to Odoo: {res.status_code}\n{res.text}",
                 media_type="text/plain",
                 status_code=500
             )
@@ -504,7 +500,7 @@ async def purchaseorders_get_pdf(purchase_orders_id: int):
         pdf_res = session.get(pdf_url)
         if pdf_res.status_code != 200:
             return Response(
-                content=f"Odoo 返回错误: {pdf_res.status_code}\n{pdf_res.text}",
+                content=f"Odoo returns an error: {pdf_res.status_code}\n{pdf_res.text}",
                 media_type="text/plain",
                 status_code=pdf_res.status_code
             )
