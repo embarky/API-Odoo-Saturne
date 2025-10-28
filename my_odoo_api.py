@@ -633,8 +633,12 @@ def cancel_purchaseorders(purchase_orders_id: int):
         # Cancel the purchase order
         models.execute_kw(DB, UID, PW, 'purchase.order', 'button_cancel', [[purchase_orders_id]])
         return {"message": "Purchase Order canceled successfully", "purchase_orders_id": purchase_orders_id}
+    except xmlrpc.client.Fault as fault:
+        # capture XML-RPC specific faults
+        return {"message": "Failed to cancel purchase order", "error": str(fault)}
     except Exception as err:
-        return {"message": "Odoo error", "error": f"Unexpected {type(err)} : {err}"}
+        # capture all other exceptions
+        return {"message": "Unexpected error occurred", "error": str(err)}
 
 ###
 ###  / p u r c h a s e o r d e r s / d e l i v e r d a t e / q u e r r y / { p u r c h a s e _ o r d e r _ i d }
