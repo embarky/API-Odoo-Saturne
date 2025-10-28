@@ -477,7 +477,7 @@ async def querry_invoice_by_ordername(order_name: str):
 ###  / a c c o u n t i n g / i n v o i c e / g e t / p d f
 ###
 @app.get("/accounting/invoice/get/pdf/{invoice_id}", tags=["Accounting"])
-async def get_pdf_invoice(invoice_id: int):
+def get_pdf_invoice(invoice_id: int):
     """
     Obtain a PDF version of an invoice.
     Example:http://127.0.0.1:8000/accounting/invoice/get/pdf/32
@@ -525,12 +525,206 @@ async def get_pdf_invoice(invoice_id: int):
         )
     except Exception as e:
         return {"error": str(e)}
+    
+###
+###  / v e n d o r s / a l l / l i s t
+###
+@app.get("/vendors/all", tags=["Vendors"])
+async def get_all_vendors():
+    "get list of all vendors, return dict of pairs (value:id, label:name)"
+    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+    search_conditions = [ ('supplier_rank','>',0) ]   # > 0 means is already vendor, >= 0 means is potentially vendor
+    read_attributes = ['name', 'supplier_rank']
+    try:
+        values = models.execute_kw(DB, UID, PW, 'res.partner', 'search_read', [search_conditions, read_attributes])
+        return [{'value':c['id'], 
+                 'label':c['name']} for c in values]
+    except Exception as err:
+        return {"Message" : f"Odoo error:",
+                "Error" : f"Unexpected  {type(err)} : {err}"}
+
+###
+###  / p u r c h a s e o r d e r s / b y _ v e n d o r _ i d/{ v e n d o r _ i d }
+###
+@app.get("/purchaseorders/by_vendor_id/{vendor_id}", tags=["Purchase Orders"])
+def get_purchaseorders_by_vendor_id(vendor_id: int):
+    "retrieve all purchase orders of a particular vendor, return complete values"
+    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+    search_conditions = [('partner_id','=', vendor_id) ]  
+    po_attributes = ['name', 
+                     'state', 
+                     'date_order', 
+                     'amount_total',
+                     'order_line']   # list of ids of order lines composing this po
+    try:
+        po_values = models.execute_kw(DB, UID, PW, 'purchase.order', 'search_read', [search_conditions, po_attributes])
+        for po in po_values:
+            polin_attributes = {'fields':['name', 
+                                          'product_id', 
+                                          'product_qty', 
+                                          'price_unit', 
+                                          'price_total']}
+            polin_values = models.execute_kw(DB, UID, PW, 'purchase.order.line', 'read', [po['order_line']], polin_attributes)
+            po['order_line'] = polin_values  # replace array of line ids by array of retrieved line values
+        return po_values
+    except Exception as err:
+        errmsg = str(err)
+        return {"Message" : f"Odoo error:",
+                "Error" : f"Unexpected  {type(err)} : {errmsg}"}
+    
+###
+###  / p u r c h a s e o r d e r s / b y _ i d/{ p u r c h a s e _ o r d e r _ i d }
+###
+@app.get("/purchaseorders/by_id/{purchase_order_id}", tags=["Purchase Orders"])
+def get_purchaseorders_by_id(purchase_order_id: int):
+    "retrieve a particular purchase order by its ID, return complete values"
+    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+    search_conditions = [('id','=', purchase_order_id) ]  
+    po_attributes = ['name', 
+                     'state', 
+                     'date_order', 
+                     'amount_total',
+                     'order_line']   # list of ids of order lines composing this po
+    try:
+        po_values = models.execute_kw(DB, UID, PW, 'purchase.order', 'search_read', [search_conditions, po_attributes])
+        if not po_values:
+            return {"message": f"Purchase Order {purchase_order_id} not found"}
+        for po in po_values:
+            polin_attributes = {'fields':['name', 
+                                          'product_id', 
+                                          'product_qty', 
+                                          'price_unit', 
+                                          'price_total']}
+            polin_values = models.execute_kw(DB, UID, PW, 'purchase.order.line', 'read', [po['order_line']], polin_attributes)
+            po['order_line'] = polin_values  # replace array of line ids by array of retrieved line values
+        return po_values[0]  # return the first (and only) purchase order
+    except Exception as err:
+        errmsg = str(err)
+        return {"Message" : f"Odoo error:",
+                "Error" : f"Unexpected  {type(err)} : {errmsg}"}
+
+###
+###  / p u r c h a s e o r d e r s / c o n f i r m / { p u r c h a s e _ o r d e r _ i d }
+###
+@app.put("/purchaseorders/confirm/{purchase_orders_id}", tags=["Purchase Orders"])
+def confirm_purchaseorders(purchase_orders_id: int):
+    """
+    Confirm a purchase order by its ID.
+    """
+    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+    try:
+        # Confirm the purchase order
+        models.execute_kw(DB, UID, PW, 'purchase.order', 'button_confirm', [[purchase_orders_id]])
+        return {"message": "Purchase Order confirmed successfully", "purchase_orders_id": purchase_orders_id}
+    except Exception as err:
+        return {"message": "Odoo error", "error": f"Unexpected {type(err)} : {err}"}
+
+###
+###  / p u r c h a s e o r d e r s / c a n c e l / { p u r c h a s e _ o r d e r _ i d }
+###
+@app.put("/purchaseorders/cancel/{purchase_orders_id}", tags=["Purchase Orders"])
+def cancel_purchaseorders(purchase_orders_id: int):
+    """
+    Cancel a purchase order by its ID.
+    Invisible: state not in ['draft' 'sent''purchase'] or not id or locked
+    """
+    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+    try:
+        # Cancel the purchase order
+        models.execute_kw(DB, UID, PW, 'purchase.order', 'button_cancel', [[purchase_orders_id]])
+        return {"message": "Purchase Order canceled successfully", "purchase_orders_id": purchase_orders_id}
+    except Exception as err:
+        return {"message": "Odoo error", "error": f"Unexpected {type(err)} : {err}"}
+
+###
+###  / p u r c h a s e o r d e r s / d e l i v e r d a t e / q u e r r y / { p u r c h a s e _ o r d e r _ i d }
+###
+@app.get("/purchaseorders/deliverdate/querry/{purchase_orders_id}", tags=["Purchase Orders"])
+async def querry_po_delivery_date(purchase_orders_id: int):
+    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+    """
+    Get the scheduled delivery date of the current purchase order
+    """
+    order = models.execute_kw(
+        DB, UID, PW,
+        'purchase.order', 'read',
+        [purchase_orders_id],
+        {'fields': ['name', 'date_planned', 'state']}
+    )
+    
+    # check if order exists
+    if not order or len(order) == 0:
+        return {"error": "Purchase order not found"}
+    
+    # get the UTC time string
+    utc_time_str = order[0].get('date_planned')
+    
+    if utc_time_str:
+        # transform UTC to Europe/Zurich timezone
+        utc = pytz.utc
+        zurich = pytz.timezone('Europe/Zurich')
+        utc_dt = utc.localize(datetime.strptime(utc_time_str, "%Y-%m-%d %H:%M:%S"))
+        local_dt = utc_dt.astimezone(zurich)
+        formatted_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        formatted_time = None
+
+    return {
+        "id": order[0]['id'],
+        "order_name": order[0]['name'],
+        "scheduled_delivery_date": formatted_time
+    }
+
+
+###
+###  / p u r c h a s e o r d e r s / d e l i v e r d a t e / c o n f i r m /{ p u r c h a s e _ o r d e r _ i d }
+###
+@app.put("/purchaseorders/deliverdate/confirm/{purchase_orders_id}", tags=["Purchase Orders"])
+def confirm_po_delivery_date(purchase_orders_id: int):
+    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+    try:
+        purchase_order = models.execute_kw(
+            DB, UID, PW,
+            'purchase.order', 'read',
+            [[purchase_orders_id]],
+            {'fields': ['state', 'mail_reminder_confirmed', 'date_planned', 'effective_date']}
+        )
+
+        if not purchase_order:
+            return {"status": "error", "message": "Purchase order not found"}
+
+        po = purchase_order[0]
+
+        # validation checks
+        if (po['state'] not in ['purchase', 'done'] or 
+            po['mail_reminder_confirmed'] or 
+            not po['date_planned'] or 
+            po['effective_date']):
+            return {"status": "error", "message": "Cannot confirm delivery date in current state"}
+
+        # call the confirm_reminder_mail method
+        try:
+            result = models.execute_kw(
+                DB, UID, PW,
+                'purchase.order', 'confirm_reminder_mail',
+                [[purchase_orders_id]]
+            )
+        except Exception:
+            # Shield the error caused by XML-RPC returning None
+            result = "executed"
+
+        return {"status": "success", "order_id": purchase_orders_id, "result": result}
+
+    except Exception:
+        # All errors are uniformly blocked and simplified information is returned.
+        return {"status": "error", "message": "Failed to confirm delivery date", "order_id": purchase_orders_id}
+
 
 ###
 ###  / p u r c h a s e o r d e r s / g e t / p d f
 ###
 @app.get("/purchaseorders/get/pdf/{purchase_orders_id}", tags=["Purchase Orders"])
-async def purchaseorders_get_pdf(purchase_orders_id: int):
+def purchaseorders_get_pdf(purchase_orders_id: int):
     """
     Obtain a PDF version of an purchase order.
     Example:http://127.0.0.1:8000/purchaseorders/get/pdf/01
