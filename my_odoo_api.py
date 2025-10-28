@@ -7,6 +7,8 @@ import ssl
 from datetime import datetime
 import requests
 import pytz
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException
 
 context = ssl._create_unverified_context() # to avoid SSL certificate verification(if needed)
 URL = "https://edu-heclausanne-saturne.odoo.com"
@@ -31,6 +33,14 @@ app = FastAPI(
     title="Odoo API - Saturne",
     description="A simple API to interact with Odoo ERP system",
     version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all sources (can be changed to a specific domain name)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 ###
@@ -159,7 +169,46 @@ async def get_saleorders_by_customer_id(cust_id: int):
         return {"Message" : f"Odoo error:",
                 "Error" : f"Unexpected  {type(err)} : {errmsg}"}
 
+###
+###  / s a l e o r d e r s / { s a l e o r d e r _ i d }
+###
+@app.get("/saleorders/by_orderid/{order_id}", tags=["Sale Orders"])
+def get_order_by_order_id(order_id: int):
+    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+    search_conditions = [('id','=', order_id)]  # query by sale order id
+    so_attributes = ['name', 'state', 'create_date', 'amount_total', 'order_line']
 
+    try:
+        # get sale order
+        so_values = models.execute_kw(DB, UID, PW, 'sale.order', 'search_read', [search_conditions], {'fields': so_attributes})
+        if not so_values:
+            raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+
+        # get sale order lines details
+        for so in so_values:
+            solin_attributes = {'fields':['name', 'product_id', 'product_uom_qty', 'price_unit', 'price_total']}
+            solin_values = models.execute_kw(DB, UID, PW, 'sale.order.line', 'read', [so['order_line']], solin_attributes)
+
+            # format order lines
+            order_lines = []
+            for line in solin_values:
+                order_lines.append({
+                    "product_id": line['product_id'][0],
+                    "product_name": line['product_id'][1],
+                    "description": line['name'],
+                    "quantity": line['product_uom_qty'],
+                    "unit_price": line['price_unit'],
+                    "total": line['price_total']
+                })
+
+            # replace order_line ids with detailed lines
+            so['order_line'] = order_lines
+
+        return so_values[0]  # return the first (and only) sale order
+
+    except Exception as err:
+        errmsg = str(err)
+        raise HTTPException(status_code=500, detail=f"Odoo error: Unexpected {type(err)} : {errmsg}")
 
 ###
 ###  / s a l e o r d e r s / q u o t a t i o n s / c o n f i r m /{ o r d e r _ n a m e }
@@ -288,18 +337,25 @@ async def create_invoice(order_name: str):
     
 
 ###
-###  / s a l e o r d e r s / d e l i v e r i e s / q u e r r y /{ o r d e r _ i d }
+###  / s a l e o r d e r s / d e l i v e r i e s / q u e r r y /{ o r d e r _ n a m e }
 ###
-@app.get("/saleorders/delivery_date/querry/{order_id}", tags=["Sale Orders"])
-async def querry_delivery_date(order_id: int):
+@app.get("/saleorders/delivery_date/querry/{order_name}", tags=["Sale Orders"])
+async def querry_delivery_date(order_name: str):
     models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
     """
     Get the scheduled delivery date of the current order
     """
+    ids = models.execute_kw(
+            DB, UID, PW,
+            'sale.order', 'search',
+            [[('name', '=', order_name)]]
+        )
+    if not ids:
+        return {"message": f"Order {order_name} not found"}
     order = models.execute_kw(
         DB, UID, PW,
         'sale.order', 'read',
-        [order_id],
+        [ids],
         {'fields': ['name', 'commitment_date']}
     )
     utc_time_str = order[0]['commitment_date']
@@ -314,7 +370,6 @@ async def querry_delivery_date(order_id: int):
         formatted_time = None
 
     return {
-        "order_id": order_id,
         "order_name": order[0]['name'],
         "scheduled_delivery_date": formatted_time
     }
@@ -322,8 +377,8 @@ async def querry_delivery_date(order_id: int):
 ###
 ###  / s a l e o r d e r s / d e l i v e r i e s / c o n f i r m ( r e j e c t )
 ###
-@app.patch("/saleorders/delivery_date/confirm/{order_id,decision,new_date}", tags=["Sale Orders"])
-async def decide_delivery_date(order_id: int, decision: str, new_date: datetime):
+@app.put("/saleorders/delivery_date/confirm/{order_name}/{decision}/{new_date}", tags=["Sale Orders"])
+async def decide_delivery_date(order_name: str, decision: str, new_date: datetime):
     """
     Confirm, reject, or propose a new delivery date for an order.
     action: "accept", "reject"
@@ -331,6 +386,14 @@ async def decide_delivery_date(order_id: int, decision: str, new_date: datetime)
     """
     try:
         models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
+        order_id = models.execute_kw(
+            DB, UID, PW,
+            'sale.order', 'search',
+            [[('name', '=', order_name)]]
+        )
+        if not order_id:
+            return {"message": f"Order {order_name} not found"}
+        order_id = order_id[0]  # get the first matching order ID
         if decision == "accept":
             return {"status": "accepted", "order_id": order_id}
 
