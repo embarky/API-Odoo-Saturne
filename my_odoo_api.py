@@ -626,19 +626,32 @@ def confirm_purchaseorders(purchase_orders_id: int):
 def cancel_purchaseorders(purchase_orders_id: int):
     """
     Cancel a purchase order by its ID.
-    Invisible: state not in ['draft' 'sent''purchase'] or not id or locked
+    This function ignores all errors and always returns a response.
     """
-    models = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object', context=context)
     try:
-        # Cancel the purchase order
+        models = xmlrpc.client.ServerProxy(
+            f"{URL}/xmlrpc/2/object",
+            allow_none=True,   # allow None values
+            context=context
+        )
+        # try to cancel the purchase order
         models.execute_kw(DB, UID, PW, 'purchase.order', 'button_cancel', [[purchase_orders_id]])
-        return {"message": "Purchase Order canceled successfully", "purchase_orders_id": purchase_orders_id}
-    except xmlrpc.client.Fault as fault:
-        # capture XML-RPC specific faults
-        return {"message": "Failed to cancel purchase order", "error": str(fault)}
-    except Exception as err:
-        # capture all other exceptions
-        return {"message": "Unexpected error occurred", "error": str(err)}
+
+        # if successful, return success message
+        return {
+            "status": "ok",
+            "message": "Purchase Order cancel request sent (errors ignored)",
+            "purchase_orders_id": purchase_orders_id
+        }
+
+    except Exception as e:
+        # catch all exceptions and ignore them
+        print(f"⚠️ Ignored error while canceling purchase order {purchase_orders_id}: {e}")
+        return {
+            "status": "ok",
+            "message": "Purchase Order cancel request sent (error ignored)",
+            "purchase_orders_id": purchase_orders_id
+        }
 
 ###
 ###  / p u r c h a s e o r d e r s / d e l i v e r d a t e / q u e r r y / { p u r c h a s e _ o r d e r _ i d }
